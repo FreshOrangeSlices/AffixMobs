@@ -1,20 +1,47 @@
 package am;
 
 import org.bukkit.NamespacedKey;
+import org.bukkit.configuration.ConfigurationSection;
 import org.bukkit.configuration.file.FileConfiguration;
-import org.bukkit.entity.LivingEntity;
-import org.bukkit.persistence.PersistentDataType;
+import org.bukkit.event.entity.CreatureSpawnEvent;
 import org.bukkit.plugin.java.JavaPlugin;
+
+import java.util.*;
 
 public final class AffixMobs extends JavaPlugin {
 
-    // PDC key(s)
+    // PDC keys
     public NamespacedKey KEY_AFFIXED;
+    public NamespacedKey KEY_TIER;
+
+    // Config-driven settings (loaded on enable)
+    public final Random rng = new Random();
+
+    public final Set<CreatureSpawnEvent.SpawnReason> allowedSpawnReasons = EnumSet.noneOf(CreatureSpawnEvent.SpawnReason.class);
+
+    public final List<Integer> tierOrder = new ArrayList<>();
+    public final Map<Integer, Integer> tierMaxDistance = new HashMap<>();
+    public final Map<Integer, Double> affixChanceByTier = new HashMap<>();
+    public final Map<Integer, Double> hpMultByTier = new HashMap<>();
+
+    public int capMaxPerWorld = 25;
+    public int capMaxPerChunk = 2;
+
+    // Debug
+    public boolean debugForceAffix = false;
+    public int debugForceTier = -1;
+    public boolean debugLogSpawns = false;
 
     @Override
     public void onEnable() {
         saveDefaultConfig();
+
         KEY_AFFIXED = new NamespacedKey(this, "affixed");
+        KEY_TIER = new NamespacedKey(this, "tier");
+
+        loadSettings();
+
+        getServer().getPluginManager().registerEvents(new AffixMobListener(this), this);
 
         getLogger().info("AffixMobs enabled");
     }
@@ -24,16 +51,64 @@ public final class AffixMobs extends JavaPlugin {
         getLogger().info("AffixMobs disabled");
     }
 
-    // Helpers (we’ll use these in Step 8+)
-    public boolean isAffixed(LivingEntity e) {
-        return e.getPersistentDataContainer().has(KEY_AFFIXED, PersistentDataType.BYTE);
+    public boolean isAffixed(org.bukkit.entity.LivingEntity e) {
+        return e.getPersistentDataContainer().has(KEY_AFFIXED, org.bukkit.persistence.PersistentDataType.BYTE);
     }
 
-    public void setAffixed(LivingEntity e) {
-        e.getPersistentDataContainer().set(KEY_AFFIXED, PersistentDataType.BYTE, (byte) 1);
+    public void setAffixed(org.bukkit.entity.LivingEntity e) {
+        e.getPersistentDataContainer().set(KEY_AFFIXED, org.bukkit.persistence.PersistentDataType.BYTE, (byte) 1);
     }
 
-    public FileConfiguration cfg() {
-        return getConfig();
+    private void loadSettings() {
+        FileConfiguration c = getConfig();
+
+        // spawn reasons
+        allowedSpawnReasons.clear();
+        for (String s : c.getStringList("allow-spawn-reasons")) {
+            try {
+                allowedSpawnReasons.add(CreatureSpawnEvent.SpawnReason.valueOf(s.toUpperCase(Locale.ROOT)));
+            } catch (IllegalArgumentException ignored) {
+                getLogger().warning("Unknown spawn reason in config: " + s);
+            }
+        }
+
+        // caps
+        capMaxPerWorld = c.getInt("caps.max-affixed-per-world", 25);
+        capMaxPerChunk = c.getInt("caps.max-affixed-per-chunk", 2);
+
+        // debug
+        debugForceAffix = c.getBoolean("debug.force-affix", false);
+        debugForceTier = c.getInt("debug.force-tier", -1);
+        debugLogSpawns = c.getBoolean("debug.log-spawns", false);
+
+        // tiers
+        tierOrder.clear();
+        tierMaxDistance.clear();
+        affixChanceByTier.clear();
+        hpMultByTier.clear();
+
+        List<Map<?, ?>> tiers = c.getMapList("tiers");
+        for (Map<?, ?> raw : tiers) {
+            Object idObj = raw.get("id");
+            if (!(idObj instanceof Number)) continue;
+            int id = ((Number) idObj).intValue();
+
+            int maxDist = raw.get("max-distance") instanceof Number n ? n.intValue() : -1;
+            double chance = raw.get("affix-chance") instanceof Number n ? n.doubleValue() : 0.0;
+            double hp = raw.get("hp-mult") instanceof Number n ? n.doubleValue() : 1.0;
+
+            tierOrder.add(id);
+            tierMaxDistance.put(id, maxDist);
+            affixChanceByTier.put(id, chance);
+            hpMultByTier.put(id, hp);
+        }
+
+        // keep tiers sorted by id (1,2,3,4)
+        tierOrder.sort(Integer::compareTo);
+
+        getLogger().info("Loaded tiers=" + tierOrder + ", caps(world=" + capMaxPerWorld + ", chunk=" + capMaxPerChunk + ")" +
+                (debugForceAffix ? " [DEBUG force-affix]" : "") +
+                (debugForceTier > 0 ? " [DEBUG force-tier=" + debugForceTier + "]" : "") +
+                (debugLogSpawns ? " [DEBUG log-spawns]" : ""));
     }
 }
