@@ -2,10 +2,8 @@ package am;
 
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.NamedTextColor;
-import org.bukkit.Bukkit;
 import org.bukkit.Chunk;
 import org.bukkit.Location;
-import org.bukkit.NamespacedKey;
 import org.bukkit.World;
 import org.bukkit.attribute.Attribute;
 import org.bukkit.attribute.AttributeInstance;
@@ -15,7 +13,7 @@ import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
 import org.bukkit.event.entity.CreatureSpawnEvent;
 import org.bukkit.event.entity.EntityDeathEvent;
-import io.papermc.paper.event.entity.EntityRemoveFromWorldEvent;
+import org.bukkit.event.world.ChunkUnloadEvent;
 import org.bukkit.persistence.PersistentDataType;
 
 import java.util.*;
@@ -90,39 +88,63 @@ public final class AffixMobListener implements Listener {
         applyHealthMult(mob, plugin.hpMultByTier.getOrDefault(tier, 1.0));
         applyName(mob, tier);
 
-        // wolf special: only "hostile" wolves (angry). If not angry, undo affix.
+        // wolf special: only hostile (angry) wolves, otherwise revert
         if (mob.getType() == EntityType.WOLF) {
             Wolf w = (Wolf) mob;
             if (!w.isAngry()) {
-                // not hostile → revert and release caps
                 clearAffixed(mob);
-                removeAffixed(mob.getWorld(), mob.getLocation().getChunk());
+                // did not "add" counts yet, so no need to remove
                 return;
             }
         }
 
+        // commit counts
         addAffixed(mob.getWorld(), mob.getLocation().getChunk());
     }
 
-    // ----- Cleanup: decrement caps when entity disappears -----
-    @EventHandler(ignoreCancelled = true)
-    public void onRemove(EntityRemoveFromWorldEvent e) {
-        if (!(e.getEntity() instanceof LivingEntity le)) return;
-        if (!plugin.isAffixed(le)) return;
-
-        World w = le.getWorld();
-        Chunk c = le.getLocation().getChunk();
-        removeAffixed(w, c);
-        // no need to clear PDC; entity is going away
-    }
-
-    // Also decrement on death (covers the common case)
+    // ----- Death: decrement caps -----
     @EventHandler(ignoreCancelled = true)
     public void onDeath(EntityDeathEvent e) {
         LivingEntity mob = e.getEntity();
         if (!plugin.isAffixed(mob)) return;
 
         removeAffixed(mob.getWorld(), mob.getLocation().getChunk());
+    }
+
+    // ----- Chunk unload: reconcile caps for affixed mobs in that chunk -----
+    @EventHandler(ignoreCancelled = true)
+    public void onChunkUnload(ChunkUnloadEvent e) {
+        Chunk c = e.getChunk();
+        World w = c.getWorld();
+
+        int removed = 0;
+        for (Entity ent : c.getEntities()) {
+            if (!(ent instanceof LivingEntity le)) continue;
+            if (!plugin.isAffixed(le)) continue;
+            removed++;
+        }
+        if (removed <= 0) return;
+
+        UUID wid = w.getUID();
+
+        // world counter
+        worldCount.compute(wid, (k, v) -> {
+            int cur = (v == null) ? 0 : v;
+            int nv = cur - removed;
+            return nv <= 0 ? null : nv;
+        });
+
+        // chunk counter
+        long ck = chunkKey(c);
+        Map<Long, Integer> map = chunkCount.get(wid);
+        if (map != null) {
+            map.compute(ck, (k, v) -> {
+                int cur = (v == null) ? 0 : v;
+                int nv = cur - removed;
+                return nv <= 0 ? null : nv;
+            });
+            if (map.isEmpty()) chunkCount.remove(wid);
+        }
     }
 
     // ----- Tier math -----
@@ -135,8 +157,6 @@ public final class AffixMobListener implements Listener {
         double dz = loc.getZ() - anchor.getZ();
         double dist = Math.sqrt(dx * dx + dz * dz);
 
-        // tiers are stored as ordered bounds in plugin.tierMaxDistance
-        // Example: tier 1 max=500, tier 2 max=1500, tier 3 max=3000, tier 4 max=-1
         for (int tier : plugin.tierOrder) {
             int max = plugin.tierMaxDistance.getOrDefault(tier, -1);
             if (max < 0) return tier; // -1 means "and up"
