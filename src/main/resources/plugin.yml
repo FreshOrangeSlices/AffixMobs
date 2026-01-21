@@ -1,0 +1,6 @@
+name: AffixMobs
+version: 0.1.0
+main: am.AffixMobs
+api-version: "1.21"
+author: FreshOrangeSlices
+description: Natural-spawn affixed mobs with tier scaling and bonus EXP.
