@@ -125,12 +125,13 @@ public final class AffixMobListener implements Listener {
         }
         if (removed <= 0) return;
 
+        final int removedCount = removed; // <- FIX: lambdas need final/effectively-final
         UUID wid = w.getUID();
 
         // world counter
         worldCount.compute(wid, (k, v) -> {
             int cur = (v == null) ? 0 : v;
-            int nv = cur - removed;
+            int nv = cur - removedCount;
             return nv <= 0 ? null : nv;
         });
 
@@ -140,7 +141,7 @@ public final class AffixMobListener implements Listener {
         if (map != null) {
             map.compute(ck, (k, v) -> {
                 int cur = (v == null) ? 0 : v;
-                int nv = cur - removed;
+                int nv = cur - removedCount;
                 return nv <= 0 ? null : nv;
             });
             if (map.isEmpty()) chunkCount.remove(wid);
