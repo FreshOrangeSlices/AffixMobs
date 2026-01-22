@@ -35,4 +35,13 @@ tiers:
 # Safety caps
 caps:
   max-affixed-per-world: 25
-  max-affixed-
+  max-affixed-per-chunk: 2
+
+# Proc cooldown for on-hit effects (ms) — used later
+proc-cooldown-ms: 3000
+
+# Debug
+debug:
+  force-affix: false
+  force-tier: -1
+  log-spawns: false
