@@ -1,24 +1,28 @@
 package am;
 
 import org.bukkit.NamespacedKey;
-import org.bukkit.configuration.ConfigurationSection;
 import org.bukkit.configuration.file.FileConfiguration;
 import org.bukkit.event.entity.CreatureSpawnEvent;
 import org.bukkit.plugin.java.JavaPlugin;
 
-import java.util.*;g
+import java.util.*;
 
 public final class AffixMobs extends JavaPlugin {
 
+    // =====================
     // PDC keys
+    // =====================
     public NamespacedKey KEY_AFFIXED;
     public NamespacedKey KEY_TIER;
     public NamespacedKey KEY_LAST_COMBAT;
 
-    // Config-driven settings (loaded on enable)
+    // =====================
+    // Config-driven settings
+    // =====================
     public final Random rng = new Random();
 
-    public final Set<CreatureSpawnEvent.SpawnReason> allowedSpawnReasons = EnumSet.noneOf(CreatureSpawnEvent.SpawnReason.class);
+    public final Set<CreatureSpawnEvent.SpawnReason> allowedSpawnReasons =
+            EnumSet.noneOf(CreatureSpawnEvent.SpawnReason.class);
 
     public final List<Integer> tierOrder = new ArrayList<>();
     public final Map<Integer, Integer> tierMaxDistance = new HashMap<>();
@@ -33,19 +37,40 @@ public final class AffixMobs extends JavaPlugin {
     public int debugForceTier = -1;
     public boolean debugLogSpawns = false;
 
+    // =====================
+    // Lifecycle
+    // =====================
     @Override
     public void onEnable() {
         saveDefaultConfig();
 
+        // Init PDC keys
         KEY_AFFIXED = new NamespacedKey(this, "affixed");
         KEY_TIER = new NamespacedKey(this, "tier");
         KEY_LAST_COMBAT = new NamespacedKey(this, "last_combat");
 
+        // Load config
         loadSettings();
 
-        getServer().getPluginManager().registerEvents(new AffixMobListener(this), this);
-        getServer().getPluginManager().registerEvents(new AffixCombatListener(this), this);
-       
+        // Register listeners
+        getServer().getPluginManager().registerEvents(
+                new AffixMobListener(this), this
+        );
+        getServer().getPluginManager().registerEvents(
+                new AffixCombatListener(this), this
+        );
+
+        // Start cleanup task
+        int intervalSeconds = getConfig().getInt("cleanup.check-interval-seconds", 30);
+        long intervalTicks = 20L * intervalSeconds;
+
+        getServer().getScheduler().runTaskTimer(
+                this,
+                new AffixCleanupTask(this),
+                intervalTicks,
+                intervalTicks
+        );
+
         getLogger().info("AffixMobs enabled");
     }
 
@@ -54,37 +79,52 @@ public final class AffixMobs extends JavaPlugin {
         getLogger().info("AffixMobs disabled");
     }
 
+    // =====================
+    // Helpers
+    // =====================
     public boolean isAffixed(org.bukkit.entity.LivingEntity e) {
-        return e.getPersistentDataContainer().has(KEY_AFFIXED, org.bukkit.persistence.PersistentDataType.BYTE);
+        return e.getPersistentDataContainer().has(
+                KEY_AFFIXED,
+                org.bukkit.persistence.PersistentDataType.BYTE
+        );
     }
 
     public void setAffixed(org.bukkit.entity.LivingEntity e) {
-        e.getPersistentDataContainer().set(KEY_AFFIXED, org.bukkit.persistence.PersistentDataType.BYTE, (byte) 1);
+        e.getPersistentDataContainer().set(
+                KEY_AFFIXED,
+                org.bukkit.persistence.PersistentDataType.BYTE,
+                (byte) 1
+        );
     }
 
+    // =====================
+    // Config loading
+    // =====================
     private void loadSettings() {
         FileConfiguration c = getConfig();
 
-        // spawn reasons
+        // Spawn reasons
         allowedSpawnReasons.clear();
         for (String s : c.getStringList("allow-spawn-reasons")) {
             try {
-                allowedSpawnReasons.add(CreatureSpawnEvent.SpawnReason.valueOf(s.toUpperCase(Locale.ROOT)));
+                allowedSpawnReasons.add(
+                        CreatureSpawnEvent.SpawnReason.valueOf(s.toUpperCase(Locale.ROOT))
+                );
             } catch (IllegalArgumentException ignored) {
                 getLogger().warning("Unknown spawn reason in config: " + s);
             }
         }
 
-        // caps
+        // Caps
         capMaxPerWorld = c.getInt("caps.max-affixed-per-world", 25);
         capMaxPerChunk = c.getInt("caps.max-affixed-per-chunk", 2);
 
-        // debug
+        // Debug
         debugForceAffix = c.getBoolean("debug.force-affix", false);
         debugForceTier = c.getInt("debug.force-tier", -1);
         debugLogSpawns = c.getBoolean("debug.log-spawns", false);
 
-        // tiers
+        // Tiers
         tierOrder.clear();
         tierMaxDistance.clear();
         affixChanceByTier.clear();
@@ -94,8 +134,8 @@ public final class AffixMobs extends JavaPlugin {
         for (Map<?, ?> raw : tiers) {
             Object idObj = raw.get("id");
             if (!(idObj instanceof Number)) continue;
-            int id = ((Number) idObj).intValue();
 
+            int id = ((Number) idObj).intValue();
             int maxDist = raw.get("max-distance") instanceof Number n ? n.intValue() : -1;
             double chance = raw.get("affix-chance") instanceof Number n ? n.doubleValue() : 0.0;
             double hp = raw.get("hp-mult") instanceof Number n ? n.doubleValue() : 1.0;
@@ -106,24 +146,15 @@ public final class AffixMobs extends JavaPlugin {
             hpMultByTier.put(id, hp);
         }
 
-        // keep tiers sorted by id (1,2,3,4)
         tierOrder.sort(Integer::compareTo);
 
-        getLogger().info("Loaded tiers=" + tierOrder + ", caps(world=" + capMaxPerWorld + ", chunk=" + capMaxPerChunk + ")" +
+        getLogger().info(
+                "Loaded tiers=" + tierOrder +
+                ", caps(world=" + capMaxPerWorld +
+                ", chunk=" + capMaxPerChunk + ")" +
                 (debugForceAffix ? " [DEBUG force-affix]" : "") +
                 (debugForceTier > 0 ? " [DEBUG force-tier=" + debugForceTier + "]" : "") +
-                (debugLogSpawns ? " [DEBUG log-spawns]" : ""));
-        // === Affix cleanup task ===
-int intervalSeconds = getConfig().getInt("cleanup.check-interval-seconds", 30);
-long intervalTicks = 20L * intervalSeconds;
-
-getServer().getScheduler().runTaskTimer(
-        this,
-        new AffixCleanupTask(this),
-        intervalTicks,
-        intervalTicks
-);
-
-        
+                (debugLogSpawns ? " [DEBUG log-spawns]" : "")
+        );
     }
 }
