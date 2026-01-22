@@ -104,6 +104,7 @@ public final class AffixMobListener implements Listener {
         if (!plugin.isAffixed(mob)) return;
 
         removeAffixed(mob.getWorld(), mob.getLocation().getChunk());
+        mob.getPersistentDataContainer().remove(plugin.KEY_AFFIXED);
     }
 
     // ----- Chunk unload -----
