@@ -15,6 +15,7 @@ public final class AffixMobs extends JavaPlugin {
     public NamespacedKey KEY_AFFIXED;
     public NamespacedKey KEY_TIER;
     public NamespacedKey KEY_LAST_COMBAT;
+    public NamespacedKey KEY_LAST_SEEN;
 
     // =====================
     // Config-driven settings
