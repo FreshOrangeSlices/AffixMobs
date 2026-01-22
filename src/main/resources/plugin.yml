@@ -4,3 +4,9 @@ main: am.AffixMobs
 api-version: "1.21"
 author: FreshOrangeSlices
 description: Natural-spawn affixed mobs with tier scaling and bonus EXP.
+
+commands:
+  affix:
+    description: Dev command for spawning affixed mobs
+    usage: /affix spawn <mob> <tier>
+    permission: affix.dev
