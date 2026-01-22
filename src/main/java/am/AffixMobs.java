@@ -44,6 +44,7 @@ public final class AffixMobs extends JavaPlugin {
     @Override
     public void onEnable() {
         saveDefaultConfig();
+        getCommand("affix").setExecutor(new AffixCommand(this));
 
         // Init PDC keys
         KEY_AFFIXED = new NamespacedKey(this, "affixed");
