@@ -110,5 +110,17 @@ public final class AffixMobs extends JavaPlugin {
                 (debugForceAffix ? " [DEBUG force-affix]" : "") +
                 (debugForceTier > 0 ? " [DEBUG force-tier=" + debugForceTier + "]" : "") +
                 (debugLogSpawns ? " [DEBUG log-spawns]" : ""));
+        // === Affix cleanup task ===
+int intervalSeconds = getConfig().getInt("cleanup.check-interval-seconds", 30);
+long intervalTicks = 20L * intervalSeconds;
+
+getServer().getScheduler().runTaskTimer(
+        this,
+        new AffixCleanupTask(this),
+        intervalTicks,
+        intervalTicks
+);
+
+        
     }
 }
