@@ -6,13 +6,14 @@ import org.bukkit.configuration.file.FileConfiguration;
 import org.bukkit.event.entity.CreatureSpawnEvent;
 import org.bukkit.plugin.java.JavaPlugin;
 
-import java.util.*;
+import java.util.*;g
 
 public final class AffixMobs extends JavaPlugin {
 
     // PDC keys
     public NamespacedKey KEY_AFFIXED;
     public NamespacedKey KEY_TIER;
+    public NamespacedKey KEY_LAST_COMBAT;
 
     // Config-driven settings (loaded on enable)
     public final Random rng = new Random();
@@ -38,11 +39,13 @@ public final class AffixMobs extends JavaPlugin {
 
         KEY_AFFIXED = new NamespacedKey(this, "affixed");
         KEY_TIER = new NamespacedKey(this, "tier");
+        KEY_LAST_COMBAT = new NamespacedKey(this, "last_combat");
 
         loadSettings();
 
         getServer().getPluginManager().registerEvents(new AffixMobListener(this), this);
-
+        getServer().getPluginManager().registerEvents(new AffixCombatListener(this), this);
+       
         getLogger().info("AffixMobs enabled");
     }
 
