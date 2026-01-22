@@ -48,61 +48,56 @@ public final class AffixMobListener implements Listener {
         // gate: allow-list
         if (!ALLOWED.contains(mob.getType())) return;
 
-        // gate: spawn reasons from config
+        // gate: spawn reasons
         if (!plugin.allowedSpawnReasons.contains(e.getSpawnReason())) return;
 
         // gate: already affixed
         if (plugin.isAffixed(mob)) return;
 
-        // compute tier
         int tier = computeTier(mob.getLocation());
         if (tier <= 0) return;
 
-        // debug: force tier
         if (plugin.debugForceTier > 0) tier = plugin.debugForceTier;
 
-        // roll chance
         boolean affix =
                 plugin.debugForceAffix ||
                 plugin.rng.nextDouble() < plugin.affixChanceByTier.getOrDefault(tier, 0.0);
 
-        if (plugin.debugLogSpawns) {
-            plugin.getLogger().info("[Spawn] " + mob.getType() +
-                    " reason=" + e.getSpawnReason() +
-                    " tier=" + tier +
-                    " roll=" + (affix ? "AFFIX" : "no"));
-        }
-
         if (!affix) return;
 
-        // caps
         if (!canAddAffixed(mob.getWorld(), mob.getLocation().getChunk())) {
-            if (plugin.debugLogSpawns) plugin.getLogger().info("[Caps] blocked affix spawn (caps hit)");
+            if (plugin.debugLogSpawns)
+                plugin.getLogger().info("[Caps] blocked affix spawn (caps hit)");
             return;
         }
 
-        // apply affix
+        // Apply affix
         plugin.setAffixed(mob);
         setTier(mob, tier);
+
+        // Mark as recently seen (for cleanup A)
+        mob.getPersistentDataContainer().set(
+                plugin.KEY_LAST_SEEN,
+                PersistentDataType.LONG,
+                System.currentTimeMillis()
+        );
 
         applyHealthMult(mob, plugin.hpMultByTier.getOrDefault(tier, 1.0));
         applyName(mob, tier);
 
-        // wolf special: only hostile (angry) wolves, otherwise revert
+        // Wolf special case
         if (mob.getType() == EntityType.WOLF) {
             Wolf w = (Wolf) mob;
             if (!w.isAngry()) {
                 clearAffixed(mob);
-                // did not "add" counts yet, so no need to remove
                 return;
             }
         }
 
-        // commit counts
         addAffixed(mob.getWorld(), mob.getLocation().getChunk());
     }
 
-    // ----- Death: decrement caps -----
+    // ----- Death -----
     @EventHandler(ignoreCancelled = true)
     public void onDeath(EntityDeathEvent e) {
         LivingEntity mob = e.getEntity();
@@ -111,7 +106,7 @@ public final class AffixMobListener implements Listener {
         removeAffixed(mob.getWorld(), mob.getLocation().getChunk());
     }
 
-    // ----- Chunk unload: reconcile caps for affixed mobs in that chunk -----
+    // ----- Chunk unload -----
     @EventHandler(ignoreCancelled = true)
     public void onChunkUnload(ChunkUnloadEvent e) {
         Chunk c = e.getChunk();
@@ -121,27 +116,25 @@ public final class AffixMobListener implements Listener {
         for (Entity ent : c.getEntities()) {
             if (!(ent instanceof LivingEntity le)) continue;
             if (!plugin.isAffixed(le)) continue;
+
             removed++;
         }
         if (removed <= 0) return;
 
-        final int removedCount = removed; // <- FIX: lambdas need final/effectively-final
         UUID wid = w.getUID();
+        long ck = chunkKey(c);
 
-        // world counter
         worldCount.compute(wid, (k, v) -> {
             int cur = (v == null) ? 0 : v;
-            int nv = cur - removedCount;
+            int nv = cur - removed;
             return nv <= 0 ? null : nv;
         });
 
-        // chunk counter
-        long ck = chunkKey(c);
         Map<Long, Integer> map = chunkCount.get(wid);
         if (map != null) {
             map.compute(ck, (k, v) -> {
                 int cur = (v == null) ? 0 : v;
-                int nv = cur - removedCount;
+                int nv = cur - removed;
                 return nv <= 0 ? null : nv;
             });
             if (map.isEmpty()) chunkCount.remove(wid);
@@ -160,13 +153,13 @@ public final class AffixMobListener implements Listener {
 
         for (int tier : plugin.tierOrder) {
             int max = plugin.tierMaxDistance.getOrDefault(tier, -1);
-            if (max < 0) return tier; // -1 means "and up"
+            if (max < 0) return tier;
             if (dist <= max) return tier;
         }
         return -1;
     }
 
-    // ----- Visuals / Attributes -----
+    // ----- Visuals -----
     private void applyHealthMult(LivingEntity mob, double mult) {
         AttributeInstance max = mob.getAttribute(Attribute.MAX_HEALTH);
         if (max == null) return;
@@ -175,7 +168,7 @@ public final class AffixMobListener implements Listener {
         double scaled = Math.max(1.0, base * mult);
 
         max.setBaseValue(scaled);
-        mob.setHealth(scaled); // heal to full after scaling
+        mob.setHealth(scaled);
     }
 
     private void applyName(LivingEntity mob, int tier) {
@@ -201,22 +194,20 @@ public final class AffixMobListener implements Listener {
     private void clearAffixed(LivingEntity e) {
         e.getPersistentDataContainer().remove(plugin.KEY_AFFIXED);
         e.getPersistentDataContainer().remove(plugin.KEY_TIER);
+        e.getPersistentDataContainer().remove(plugin.KEY_LAST_SEEN);
         e.setCustomName(null);
         e.setCustomNameVisible(false);
     }
 
     // ----- Caps helpers -----
     private boolean canAddAffixed(World w, Chunk c) {
-        int wMax = plugin.capMaxPerWorld;
-        int cMax = plugin.capMaxPerChunk;
-
         int wc = worldCount.getOrDefault(w.getUID(), 0);
-        if (wc >= wMax) return false;
+        if (wc >= plugin.capMaxPerWorld) return false;
 
         long ck = chunkKey(c);
-        Map<Long, Integer> map = chunkCount.computeIfAbsent(w.getUID(), k -> new ConcurrentHashMap<>());
-        int cc = map.getOrDefault(ck, 0);
-        return cc < cMax;
+        Map<Long, Integer> map =
+                chunkCount.computeIfAbsent(w.getUID(), k -> new ConcurrentHashMap<>());
+        return map.getOrDefault(ck, 0) < plugin.capMaxPerChunk;
     }
 
     private void addAffixed(World w, Chunk c) {
@@ -251,7 +242,6 @@ public final class AffixMobListener implements Listener {
     }
 
     private long chunkKey(Chunk c) {
-        // pack (x,z) into one long
         return (((long) c.getX()) << 32) ^ (c.getZ() & 0xffffffffL);
     }
 }
