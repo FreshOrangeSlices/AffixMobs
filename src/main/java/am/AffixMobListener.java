@@ -110,39 +110,42 @@ public final class AffixMobListener implements Listener {
     // ----- Chunk unload -----
     @EventHandler(ignoreCancelled = true)
     public void onChunkUnload(ChunkUnloadEvent e) {
-        Chunk c = e.getChunk();
-        World w = c.getWorld();
+    Chunk c = e.getChunk();
+    World w = c.getWorld();
 
-        int removed = 0;
-        for (Entity ent : c.getEntities()) {
+    int removed = 0;
+    for (Entity ent : c.getEntities()) {
         if (!(ent instanceof LivingEntity le)) continue;
-            if (!plugin.isAffixed(le)) continue;
-          removed++;
+        if (!plugin.isAffixed(le)) continue;
+        removed++;
     }
 
-        if (removed <= 0) return;
+    if (removed <= 0) return;
 
-        final int removedCount = removed;
-        UUID wid = w.getUID();
+    final int removedCount = removed; // ✅ MUST be here
 
-        // world counter
-        worldCount.compute(wid, (k, v) -> {
+    UUID wid = w.getUID();
+    long ck = chunkKey(c);
+
+    // world counter
+    worldCount.compute(wid, (k, v) -> {
         int cur = (v == null) ? 0 : v;
         int nv = cur - removedCount;
         return nv <= 0 ? null : nv;
     });
 
-        // chunk counter
-        long ck = chunkKey(c);
-        Map<Long, Integer> map = chunkCount.get(wid);
-        if (map != null) {
+    // chunk counter
+    Map<Long, Integer> map = chunkCount.get(wid);
+    if (map != null) {
         map.compute(ck, (k, v) -> {
-        int cur = (v == null) ? 0 : v;
-        int nv = cur - removedCount;
-        return nv <= 0 ? null : nv;
+            int cur = (v == null) ? 0 : v;
+            int nv = cur - removedCount;
+            return nv <= 0 ? null : nv;
         });
-      if (map.isEmpty()) chunkCount.remove(wid);
+        if (map.isEmpty()) chunkCount.remove(wid);
+    }
 }
+
         
     // ----- Tier math -----
     private int computeTier(Location loc) {
