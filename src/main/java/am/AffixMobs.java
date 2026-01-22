@@ -37,6 +37,12 @@ public final class AffixMobs extends JavaPlugin {
     public boolean debugForceAffix = false;
     public int debugForceTier = -1;
     public boolean debugLogSpawns = false;
+    // =====================
+    // Affixed mob tracking (performance critical)
+    // =====================
+    private final Set<UUID> trackedAffixed =
+        Collections.newSetFromMap(new java.util.concurrent.ConcurrentHashMap<>());
+
 
     // =====================
     // Lifecycle
@@ -99,6 +105,21 @@ public final class AffixMobs extends JavaPlugin {
                 (byte) 1
         );
     }
+    // =====================
+    // Affixed mob tracking helpers
+    // =====================
+
+    public void trackAffixed(UUID id) {
+    if (id != null) trackedAffixed.add(id);
+}
+
+    public void untrackAffixed(UUID id) {
+    if (id != null) trackedAffixed.remove(id);
+}
+
+    public Set<UUID> getTrackedAffixed() {
+    return trackedAffixed;
+}
 
     // =====================
     // Config loading
