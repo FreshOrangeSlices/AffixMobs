@@ -49,6 +49,7 @@ public final class AffixMobs extends JavaPlugin {
         KEY_AFFIXED = new NamespacedKey(this, "affixed");
         KEY_TIER = new NamespacedKey(this, "tier");
         KEY_LAST_COMBAT = new NamespacedKey(this, "last_combat");
+        KEY_LAST_SEEN = new NamespacedKey(this, "last_seen");
 
         // Load config
         loadSettings();
