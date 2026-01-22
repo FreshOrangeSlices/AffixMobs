@@ -45,3 +45,18 @@ debug:
   force-affix: false
   force-tier: -1
   log-spawns: false
+ 
+# Cleanup (affixed mob despawn safety)
+cleanup:
+  enabled: true
+  check-interval-seconds: 30
+
+  default:
+    max-distance: 128
+    idle-seconds: 120
+    combat-grace-seconds: 30
+
+  tier-4:
+    max-distance: 160
+    idle-seconds: 300
+
